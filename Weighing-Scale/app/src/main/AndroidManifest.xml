@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.example.soumi.ble_application">
+
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"></uses-permission>
+
+    <application
+        android:allowBackup="true"
+        android:icon="@drawable/appleicon"
+        android:label="BLE Weighing Scale"
+        android:theme="@style/AppTheme"
+        android:supportsRtl="true">
+
+        <activity android:name=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <action android:name="android.location.PROVIDERS_CHANGED" />
+                <action android:name="android.bluetooth.adapter.action.STATE_CHANGED" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".Hardware.BLEService"
+            android:enabled="true"
+            android:exported="false">
+
+            <intent-filter>
+                <action android:name="android.intent.action.SERVICE" />
+                <action android:name="android.location.PROVIDERS_CHANGED" />
+                <action android:name="android.bluetooth.adapter.action.STATE_CHANGED" />
+                <category android:name="android.intent.category.DEFAULT"></category>
+            </intent-filter>
+
+        </service>
+        <meta-data
+            android:name="io.fabric.ApiKey"
+            android:value="ff4866fb27ba98fcc1600e37c1831429917f32c9"
+            />
+    </application>
+
+</manifest>
