@@ -83,7 +83,7 @@ public class BLEService extends Service {
     int mRssi;
     byte[] mManufacturerSpecificData = null;
     private static final String TAG = BLEService.class.getSimpleName();
-
+    double previousWeightNum = 0;
     public BLEService() {
     }
 
@@ -207,7 +207,7 @@ public class BLEService extends Service {
     {
         mBluetoothLeScanner = mBluetoothAdapter.getBluetoothLeScanner();
         mScanSettings = new ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_POWER).build();
-        mBuilderScanFilter  = new ScanFilter.Builder().setDeviceName("SENSSUN BODY");
+        mBuilderScanFilter  = new ScanFilter.Builder();
         mScanFilter = mBuilderScanFilter.build();
         mScanFilterList = new ArrayList<>();
         mScanFilterList.add(mScanFilter);
@@ -238,11 +238,16 @@ public class BLEService extends Service {
             super.onScanResult(callbackType, result);
             ScanRecord mScanRecord = result.getScanRecord();
             mRssi = result.getRssi();
-            Log.d(TAG,"Scan Record is "+mScanRecord);
-            Log.d(TAG,"rssi is" + mRssi);
+
             BluetoothDevice device = result.getDevice();
             mDeviceAddress = device.getAddress();
-            parse_advertising_data(mScanRecord.getBytes(),mDeviceAddress);
+            if (device.getName() != null) {
+                if (device.getName().contains("Jumper-medical_Scale")) {
+                    Log.d(TAG, "rssi is" + mRssi);
+                    Log.d(TAG,"ScanRecord is" + mScanRecord);
+                    parse_advertising_data(mScanRecord.getBytes(), mDeviceAddress);
+                }
+            }
         }
 
         @Override
@@ -259,28 +264,21 @@ public class BLEService extends Service {
     public void parse_advertising_data(byte[] bytes , String mDeviceAddress)
     {
         mAdvertisingDataParser = AdvertisingDataParser.parser(bytes, mDeviceAddress);
-
         if (mAdvertisingDataParser.mParsingComplete) {
 
             mManufacturerSpecificData = mAdvertisingDataParser.getmManufacturerSpecificData().clone();
 
-            if (String.format("%02X ", Byte.valueOf(mManufacturerSpecificData[9])).trim().equals("AA"))
-                mSetIfStable = true;
-             else
-                mSetIfStable = false;
-
-            if(mSetIfStable) {
-                String kgNum = String.valueOf(String.format("%02X ", Byte.valueOf(mManufacturerSpecificData[5])).trim()) + String.format("%02X ", Byte.valueOf(mManufacturerSpecificData[6])).trim();
-                String lbNum = String.valueOf(String.format("%02X ", Byte.valueOf(mManufacturerSpecificData[7])).trim()) + String.format("%02X ", Byte.valueOf(mManufacturerSpecificData[8])).trim();
-                double WeightNum = (Integer.valueOf(kgNum, 16));
-                double weight = WeightNum / 10;
-                double lbWeightNum = (Integer.valueOf(lbNum, 16));
-                double lb = lbWeightNum / 10;
-                show_notification("Your Weight in kgs is " + weight);
-                startscan(false);
-                Log.d(TAG, "Weight in kgs " + weight);
-                Log.d(TAG, "Weight in lbs" + lb);
+            for(byte x:mManufacturerSpecificData){
+                String data = String.valueOf(String.format("%02X ", Byte.valueOf(x)).trim());
+                Log.d(TAG,data);
             }
+            String kgNum = String.valueOf(String.format("%02X ", Byte.valueOf(mManufacturerSpecificData[4])).trim()) + String.format("%02X ", Byte.valueOf(mManufacturerSpecificData[3])).trim();
+            double weightNum = (Integer.valueOf(kgNum, 16));
+            double weight = (weightNum/10)*2.2046228;
+            weight = Math.round(weight * 10.0) / 10.0;
+            if (weight != previousWeightNum && weight!=0)
+                show_notification("Your weight int lbs is" + weight);
+            previousWeightNum = weight;
         }
 
     }
