@@ -22,6 +22,7 @@ import android.bluetooth.le.ScanResult;
 import android.bluetooth.le.ScanSettings;
 import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.location.LocationManager;
@@ -34,9 +35,15 @@ import android.os.Message;
 import android.os.Messenger;
 import android.os.PowerManager;
 import android.os.RemoteException;
+import android.provider.Settings;
+import android.app.AlertDialog;
 import android.support.v7.app.NotificationCompat;
 import android.util.Log;
 import android.util.Pair;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.WindowManager;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import com.example.soumi.ble_application.MainActivity;
@@ -55,7 +62,7 @@ import static java.lang.Thread.sleep;
 
 public class BLEService extends Service {
 
-
+     TextView text;
     public enum ServiceState {
         SCANNING, IDLE
     }
@@ -82,8 +89,12 @@ public class BLEService extends Service {
     BatteryManager mBatteryManager;
     int mRssi;
     byte[] mManufacturerSpecificData = null;
+    byte[] mServiceData = null;
     private static final String TAG = BLEService.class.getSimpleName();
     double previousWeightNum = 0;
+    public boolean dialog_flag;
+    private boolean firstConnect = true;
+
     public BLEService() {
     }
 
@@ -109,7 +120,7 @@ public class BLEService extends Service {
     {
         WAKELOCK.release();
         WAKELOCK = null;
-        show_notification("Service is destroyed");
+        show_notification("Service is destroyed",0);
         Log.d(TAG,"Service Destroyed");
         super.onDestroy();
         mState = ServiceState.IDLE;
@@ -137,7 +148,7 @@ public class BLEService extends Service {
     public int onStartCommand(final Intent intent , int flags, int a) {
         IntentFilter filter = new IntentFilter();
         Log.d(TAG,"Service Started");
-        filter.addAction(mBluetoothAdapter.ACTION_STATE_CHANGED);
+       // filter.addAction(mBluetoothAdapter.ACTION_STATE_CHANGED);
         filter.addAction("android.bluetooth.adapter.action.STATE_CHANGED");
         filter.addAction("android.action.scan");
         filter.addAction("android.location.PROVIDERS_CHANGED");
@@ -155,7 +166,7 @@ public class BLEService extends Service {
             WAKELOCK.acquire();
             Log.d(TAG,"wakelock acquired");
 
-        }if (mState == ServiceState.SCANNING) {
+        }if (mState == ServiceState.SCANNING && mBluetoothAdapter.isEnabled()) {
             // If the state is already scanning then restart the scan and reset the alarm
             startscan(false);
             final Handler handler = new Handler();
@@ -167,7 +178,7 @@ public class BLEService extends Service {
                 }
             }, 20000);
 
-        } else if (mState == ServiceState.IDLE) {
+        } else if (mState == ServiceState.IDLE && mBluetoothAdapter.isEnabled()) {
             // if the state is idle, then start scanning
             startscan(true);
 
@@ -206,7 +217,7 @@ public class BLEService extends Service {
     public void startscan(boolean enable)
     {
         mBluetoothLeScanner = mBluetoothAdapter.getBluetoothLeScanner();
-        mScanSettings = new ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_POWER).build();
+        mScanSettings = new ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_BALANCED).build();
         mBuilderScanFilter  = new ScanFilter.Builder();
         mScanFilter = mBuilderScanFilter.build();
         mScanFilterList = new ArrayList<>();
@@ -238,11 +249,10 @@ public class BLEService extends Service {
             super.onScanResult(callbackType, result);
             ScanRecord mScanRecord = result.getScanRecord();
             mRssi = result.getRssi();
-
             BluetoothDevice device = result.getDevice();
             mDeviceAddress = device.getAddress();
             if (device.getName() != null) {
-                if (device.getName().contains("Jumper-medical_Scale")) {
+                if (device.getName().contains("Jumper-medical_Scale")) {    //  MI_SCALE, Electronic Scale
                     Log.d(TAG, "rssi is" + mRssi);
                     Log.d(TAG,"ScanRecord is" + mScanRecord);
                     parse_advertising_data(mScanRecord.getBytes(), mDeviceAddress);
@@ -264,22 +274,107 @@ public class BLEService extends Service {
     public void parse_advertising_data(byte[] bytes , String mDeviceAddress)
     {
         mAdvertisingDataParser = AdvertisingDataParser.parser(bytes, mDeviceAddress);
-        if (mAdvertisingDataParser.mParsingComplete) {
 
-            mManufacturerSpecificData = mAdvertisingDataParser.getmManufacturerSpecificData().clone();
+       /* if (mAdvertisingDataParser.mParsingComplete && mServiceData != null) {
+            for (byte x : mManufacturerSpecificData) {
+                String data = String.valueOf(String.format("%02X ", Byte.valueOf(x)).trim());
+                Log.d(TAG, data);
+            }
+        }*/
 
-            for(byte x:mManufacturerSpecificData){
+        // MI Scale
+        /*    mServiceData = mAdvertisingDataParser.getmServiceData().clone();
+        if (mAdvertisingDataParser.mParsingComplete && mServiceData != null) {
+            for(byte x:mServiceData){
                 String data = String.valueOf(String.format("%02X ", Byte.valueOf(x)).trim());
                 Log.d(TAG,data);
             }
-            String kgNum = String.valueOf(String.format("%02X ", Byte.valueOf(mManufacturerSpecificData[4])).trim()) + String.format("%02X ", Byte.valueOf(mManufacturerSpecificData[3])).trim();
+            String status_flag = String.valueOf(String.format("%02X ", Byte.valueOf(mServiceData[0])).trim());
+            int status = (Integer.valueOf(status_flag, 16));
+            String binary = Integer.toBinaryString(status);
+            Log.d(TAG,binary);
+            String kgNum = String.valueOf(String.format("%02X ", Byte.valueOf(mServiceData[2])).trim()) + String.format("%02X ", Byte.valueOf(mServiceData[1])).trim();
             double weightNum = (Integer.valueOf(kgNum, 16));
-            double weight = (weightNum/10)*2.2046228;
-            weight = Math.round(weight * 10.0) / 10.0;
+            double weight = (weightNum/100);
             if (weight != previousWeightNum && weight!=0)
                 show_notification("Your weight int lbs is" + weight);
-            previousWeightNum = weight;
+            previousWeightNum = weight; */
+
+
+            // Jumper Code below
+        if (mAdvertisingDataParser.mParsingComplete) {
+            if (mAdvertisingDataParser.getmManufacturerSpecificData() != null) {
+                mManufacturerSpecificData = mAdvertisingDataParser.getmManufacturerSpecificData().clone();
+
+                for (byte x : mManufacturerSpecificData) {
+                    String data = String.valueOf(String.format("%02X ", Byte.valueOf(x)).trim());
+                    Log.d(TAG, data);
+                }
+                String low = String.valueOf(String.format("%02X ", Byte.valueOf(mManufacturerSpecificData[1])).trim());
+                double low_battery = (Integer.valueOf(low, 16));
+                String kgNum = String.valueOf(String.format("%02X ", Byte.valueOf(mManufacturerSpecificData[4])).trim()) + String.format("%02X ", Byte.valueOf(mManufacturerSpecificData[3])).trim();
+                double weightNum = (Integer.valueOf(kgNum, 16));
+                double weight = (weightNum / 10) * 2.2046228;
+                weight = Math.round(weight * 10.0) / 10.0;
+                if (weight == 0) {
+                    show_notification("Low battery",0);
+                }
+                else if (weight < 6.61 ) {
+                    show_notification("Weight is not captured/Underweight",0);
+                }
+                else if (weight != previousWeightNum && weight != 0) {
+                    if (!dialog_flag) {
+                        show_dialogbox("Your Weight is", weight);
+                        dialog_flag = true;
+                    }
+                    else
+                    {
+                        text.setText("Your weight is" + " " + weight);
+                    }
+                }
+
+                    //show_notification("Your weight int lbs is" + weight,0);
+                previousWeightNum = weight;
+
+            }
         }
+
+    }
+
+    public void show_dialogbox(String data, double weight)
+    {
+
+        LayoutInflater layoutInflater = LayoutInflater.from(getApplicationContext());
+        View promptview = layoutInflater.inflate(R.layout.show_dialog, null);
+        AlertDialog.Builder alertdialogbuilder = new AlertDialog.Builder(this);
+        alertdialogbuilder.setView(promptview);
+        text = (TextView) promptview.findViewById(R.id.Text);
+
+        text.setText(data + " " + weight);
+        alertdialogbuilder.setCancelable(false).setPositiveButton("OK", new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialogInterface, int i) {
+                    Intent intent = new Intent(getApplicationContext(), MainActivity.class); // A new intent to launch another activity
+                    intent.putExtra("fromNotification", true);
+                    PendingIntent pendingIntent = PendingIntent.getActivity(getApplicationContext(), (int) System.currentTimeMillis(), intent, 0);
+                    try {
+                        pendingIntent.send(getApplicationContext(),0,intent);
+                    } catch (PendingIntent.CanceledException e) {
+                        e.printStackTrace();
+                    }
+                    dialog_flag = false;
+                }
+        }).setNegativeButton("cancel", new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialogInterface, int i) {
+                    dialog_flag = false;
+
+                }
+            });
+            AlertDialog alert = alertdialogbuilder.create();
+            alert.getWindow().setType(WindowManager.LayoutParams.TYPE_SYSTEM_ALERT);
+            alert.show();
+
 
     }
 
@@ -290,13 +385,18 @@ public class BLEService extends Service {
            Fourth - FLAG- This one is used to state if a previous pendingIntent already exists or not. If it does then
            update it with the new intent. FLAG_UPDATE_CURRENT can be used for that.
             */
-    public void show_notification(String text)
+    public void show_notification(String text,int state)
     {
-        Intent intent = new Intent(getApplicationContext(),MainActivity.class); // A new intent to launch another activity
-        intent.putExtra("fromNotification", true);
-
-        PendingIntent pendingIntent = PendingIntent.getActivity(getApplicationContext(), (int)System.currentTimeMillis(),intent,0 );
-
+        PendingIntent pendingIntent = null;
+        if (state == 0) {
+            Intent intent = new Intent(getApplicationContext(), MainActivity.class); // A new intent to launch another activity
+            intent.putExtra("fromNotification", true);
+            pendingIntent = PendingIntent.getActivity(getApplicationContext(), (int) System.currentTimeMillis(), intent, 0);
+        } else if (state == 1) {
+            Intent myIntent = new Intent( Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+            pendingIntent = PendingIntent.getActivity(getApplicationContext(), (int) System.currentTimeMillis(), myIntent, 0);
+            //context.startActivity(myIntent);
+        }
         // Notification is created using the notification manager.
         NotificationManager notificationManager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
 
@@ -323,14 +423,17 @@ public class BLEService extends Service {
 
         public void StartBLEScan()
         {
-            final Handler handler = new Handler();
-            handler.postDelayed(new Runnable() {
-                @Override
-                public void run() {
-                    // Do scanning after 20 = 20000ms
-                    startscan(true);
-                }
-            }, 20000);
+            if (mBluetoothAdapter.isEnabled()) {
+                startscan(false);
+                final Handler handler = new Handler();
+                handler.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        // Do scanning after 20 = 20000ms
+                        startscan(true);
+                    }
+                }, 10000);
+            }
         }
 
         // Can use this function to pass the device name to the Main Activity
@@ -403,28 +506,32 @@ public class BLEService extends Service {
     }
     public class BluetoothStateReceiver extends BroadcastReceiver
     {
+
         @Override
         public void onReceive(Context context, Intent intent)
         {
 
+
             final String action = intent.getAction();
             Log.d(TAG,action);
+
             if (intent.getAction().matches("android.action.scan")) {
                 // This intent is called from the alarm manager. We use this to restart the BLE scan.
-                startscan(false);
-                final Handler handler = new Handler();
-                handler.postDelayed(new Runnable() {
-                    @Override
-                    public void run() {
-                        // Do scanning after 20 sec = 20000ms
-                        startscan(true);
+                if (mBluetoothAdapter.isEnabled()) {
+                    startscan(false);
+                    final Handler handler = new Handler();
+                    handler.postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            // Do scanning after 20 sec = 20000ms
+                            startscan(true);
+                        }
+                    }, 20000);
+
+                    if (Build.VERSION.SDK_INT >= 23) {
+                        startAlarm(true);
                     }
-                }, 20000);
-
-                if (Build.VERSION.SDK_INT >= 23) {
-                    startAlarm(true);
                 }
-
             }
 
             if (intent.getAction().matches("android.location.PROVIDERS_CHANGED")) {
@@ -432,38 +539,54 @@ public class BLEService extends Service {
                 Log.d(TAG,"Location Providers Changed");
                 if (mLocationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)){
                     Log.d(TAG,"GPS is enabled");
+                    if (mBluetoothAdapter.isEnabled())
+                        startscan(true);
                 } else {
                     Log.d(TAG,"GPS is disabled");
+                    if (mBluetoothAdapter.isEnabled())
+                        startscan(false);
+                    show_notification("GPS is disabled ",1);
                 }
             }
 
-            if (action.equals(BluetoothAdapter.ACTION_STATE_CHANGED)) {
+            if (action.equals("android.bluetooth.adapter.action.STATE_CHANGED")) {
 
-                final int state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR);
-                switch(state) {
-                    case BluetoothAdapter.STATE_OFF:
-                        if (isServiceBinded) {
-                            if (mActivityMessenger != null) {
-                                try {
-                                    mActivityMessenger.send(Message.obtain(null, MainActivity.MSG_NOTIFY_STATE_CHANGE, "BLE turned OFF"));
-                                } catch (RemoteException e) {
-                                    e.printStackTrace();
+                if (firstConnect == true) {
+                    final int state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR);
+                    switch (state) {
+                        case BluetoothAdapter.STATE_OFF:
+
+                            show_notification("BLE is turned off", 0);
+                            firstConnect = false;
+                            if (isServiceBinded) {
+                                if (mActivityMessenger != null) {
+                                    try {
+                                        mActivityMessenger.send(Message.obtain(null, MainActivity.MSG_NOTIFY_STATE_CHANGE, "BLE turned OFF"));
+                                    } catch (RemoteException e) {
+                                        e.printStackTrace();
+                                    }
                                 }
                             }
-                        }
-                        break;
-                    case BluetoothAdapter.STATE_ON:
-                        if (isServiceBinded) {
-                            if (mActivityMessenger != null) {
-                                try {
-                                    mActivityMessenger.send(Message.obtain(null, MainActivity.MSG_NOTIFY_STATE_CHANGE, "Start scanning"));
-                                } catch (RemoteException e) {
-                                    e.printStackTrace();
+
+                            break;
+                        case BluetoothAdapter.STATE_ON:
+                            if (isServiceBinded) {
+                                if (mActivityMessenger != null) {
+                                    try {
+                                        mActivityMessenger.send(Message.obtain(null, MainActivity.MSG_NOTIFY_STATE_CHANGE, "Start scanning"));
+                                    } catch (RemoteException e) {
+                                        e.printStackTrace();
+                                    }
                                 }
                             }
-                        }
-                        startscan(true);
-                        break;
+                            startscan(true);
+                            firstConnect = false;
+                            break;
+                    }
+                }
+                else
+                {
+                    firstConnect = false;
                 }
 
             }

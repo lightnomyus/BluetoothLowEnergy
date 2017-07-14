@@ -8,6 +8,7 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
+import android.content.ActivityNotFoundException;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
@@ -16,6 +17,7 @@ import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
 import android.location.LocationManager;
+import android.net.Uri;
 import android.os.BatteryManager;
 import android.os.Build;
 import android.os.Handler;
@@ -90,7 +92,24 @@ public class MainActivity extends AppCompatActivity {
             Bundle b = getIntent().getExtras();
             cameFromNotification = b.getBoolean("fromNotification");
         }
+        IntentFilter filter = new IntentFilter();
+        filter.addAction("android.action.service");
+        //filter.addAction("android.bluetooth.adapter.action.STATE_CHANGED");
+        filter.addAction("android.action.destroyed");
+       // filter.addAction("android.location.PROVIDERS_CHANGED");
+        mServiceReceiver = new ServiceStateReceiver();
+        registerReceiver(mServiceReceiver, filter);
 
+    }
+    @TargetApi(Build.VERSION_CODES.M)
+    private void openOverlaySettings() {
+        final Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:" + getPackageName()));
+        try {
+            startActivityForResult(intent, 2);
+        } catch (ActivityNotFoundException e) {
+            Log.e(TAG, e.getMessage());
+        }
     }
     @Override
     public void onSaveInstanceState(Bundle savedInstanceState) {
@@ -98,6 +117,15 @@ public class MainActivity extends AppCompatActivity {
         Log.d(TAG, "onSaveInstanceState");
         savedInstanceState.putBoolean("ServiceRunning",mServiceRunning);
         savedInstanceState.putBoolean("ServiceBinded",mServiceBounded);
+        savedInstanceState.putBoolean("Permission",mPermission);
+    }
+
+    @Override
+    public void onRestoreInstanceState(Bundle savedInstanceState) {
+        super.onRestoreInstanceState(savedInstanceState);
+        mServiceRunning = savedInstanceState.getBoolean("ServiceRunning");
+        mServiceBounded = savedInstanceState.getBoolean("ServiceBinded");
+        mPermission = savedInstanceState.getBoolean("Permission");
     }
 
     @Override
@@ -144,20 +172,28 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        mActivityForegroundCheck = true;
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            openOverlaySettings();
+        }
         // Add Bluetooth Permissions in the manifest file before writing the first bluetooth <code></code>
         if (!getPackageManager().hasSystemFeature(PackageManager.FEATURE_BLUETOOTH_LE)) {
             Toast.makeText(this, "ble not supported", Toast.LENGTH_LONG).show();
             finish();
         }
 
-
         if (!mBtAdapter.isEnabled()) {
             Log.i(TAG, "onClick - BT not enabled yet");
             Intent enableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
             startActivityForResult(enableIntent, REQUEST_ENABLE_BT);
 
-        } else if (mBtAdapter.isEnabled() && mPermission) {
+        }
+        if (!mLocationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)){
+            Log.d(TAG,"GPS is disabled from activity");
+            display_notification("Enable GPS for data to sync",1);
+        }
+        else if (mBtAdapter.isEnabled() && mPermission) {
 
             if (!mServiceRunning && !mServiceBounded) {
 
@@ -173,27 +209,15 @@ public class MainActivity extends AppCompatActivity {
                 startService(new Intent(getApplicationContext(), BLEService.class));
             }
 
-            mActivityForegroundCheck = true;
-            IntentFilter filter = new IntentFilter();
-            filter.addAction("android.action.service");
-            filter.addAction("android.bluetooth.adapter.action.STATE_CHANGED");
-            filter.addAction("android.action.destroyed");
-            filter.addAction("android.location.PROVIDERS_CHANGED");
-            mServiceReceiver = new ServiceStateReceiver();
-            registerReceiver(mServiceReceiver, filter);
-        }
-        else if (mBtAdapter.isEnabled() && !mPermission)
-        {
+        } else if (mBtAdapter.isEnabled() && !mPermission) {
             if ((ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION)
                     != PackageManager.PERMISSION_GRANTED)) {
                 ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_COARSE_LOCATION}, 1);
             }
+        }
 
-        }
-        if (!mLocationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)){
-            Log.d(TAG,"GPS is disabled");
-            display_notification("Enable GPS for data to sync",1);
-        }
+
+
     }
     @Override
     protected void onPause() {
@@ -202,18 +226,16 @@ public class MainActivity extends AppCompatActivity {
             unbindService(mServiceConnection);
             mServiceBounded = false;
         }
+        if (mServiceReceiver != null) {
+            unregisterReceiver(mServiceReceiver);
+            mServiceReceiver = null;
+        }
         mActivityForegroundCheck = false;
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        try {
-            if (mServiceReceiver != null)
-            unregisterReceiver(mServiceReceiver);
-        }catch (IllegalFormatException e)
-        {
-        };
         Log.d(TAG, "Activity Destroyed");
     }
 
@@ -227,20 +249,7 @@ public class MainActivity extends AppCompatActivity {
                         && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                     // Permission Granted
                     Log.d(TAG,"Permission Granted");
-                    if (!mServiceRunning && !mServiceBounded) {
-
-                        startService(new Intent(getApplicationContext(), BLEService.class));
-                        bindService(new Intent(this, BLEService.class), mServiceConnection, Context.BIND_AUTO_CREATE);
-                        mServiceRunning = true;
-                        mPermission = true;
-                    }
-                    else if (!mServiceBounded && mServiceRunning) {
-                        bindService(new Intent(this, BLEService.class), mServiceConnection, Context.BIND_AUTO_CREATE);
-                    }
-
-                    else if (mServiceBounded && !mServiceRunning) {
-                        startService(new Intent(getApplicationContext(), BLEService.class));
-                    }
+                    mPermission = true;
 
                 } else {
                     mPermission = false;
