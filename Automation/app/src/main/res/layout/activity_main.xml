@@ -17,7 +17,7 @@
         android:layout_height="wrap_content"
         android:id="@+id/ConnectButton"
         android:layout_margin="8dp"
-        android:text="Connect" />
+        android:text="Press here to Connect with Automation System" />
     <Button
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -50,7 +50,7 @@
 
     <Button
         android:id="@+id/EndTestButton"
-        android:text="END TEST"
+        android:text="End test "
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:padding="8dp"
