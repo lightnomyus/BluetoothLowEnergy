@@ -2,11 +2,13 @@ package com.example.soumil.automation;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.FragmentManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
@@ -17,6 +19,7 @@ import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.location.LocationManager;
 import android.os.Build;
+import android.os.CountDownTimer;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
@@ -39,24 +42,40 @@ import android.widget.Toast;
 import com.daimajia.numberprogressbar.NumberProgressBar;
 import com.daimajia.numberprogressbar.OnProgressBarListener;
 
+import org.w3c.dom.Text;
+
 import java.util.IllegalFormatException;
 import java.util.Locale;
 import java.util.Timer;
 import java.util.TimerTask;
 
-public class MainActivity extends AppCompatActivity implements OnProgressBarListener,View.OnClickListener {
+public class MainActivity extends AppCompatActivity implements OnProgressBarListener,View.OnClickListener,BleCallbacks {
     private Timer timer;
 
-    private NumberProgressBar bnp;
+    public NumberProgressBar bnp;
     private Button StartTestButton;
     private Button CancelButton;
-    private Button RestartButton;
-    private Button EndTestButton;
+    private Button LoadingButton;
     private Button BLEConnectButton;
     private TextView textView;
+    private TextView batteryTextView;
     private ServiceStateReceiver mServiceReceiver;
     public TextToSpeech tts;
-
+    public static final int NOTIFY_CONNECTION = 1;
+    public static final int NOTIFY_CONNECTING = 2;
+    public static final int NOTIFY_DISCONNECTING = 3;
+    public static final int NOTIFY_DISCONNECTION = 4;
+    public static final int NOTIFY_BONDING = 5;
+    public static final int NOTIFY_BONDED = 6;
+    public static final int NOTIFY_GATT_ERROR = 7;
+    public static final int NOTIFY_DEVICE_READY = 8;
+    public static final int NOTIFY_DEVICE_NOT_SUPPORTED = 9;
+    public static final int NOTIFY_DATA_CHANGE = 10;
+    public static final int NOTIFY_TASK_COMPETED =11;
+    public static final int NOTIFY_CURRENT_TASK_RUNNING = 12;
+    public static final int NOTIFY_ERROR = 13;
+    public static final int FOUND_DEVICE = 14;
+    public static final int BATTERY_STATE = 15;
     private static boolean mServiceBounded;
     private static boolean mServiceRunning;
     public static boolean mPermissionGranted;
@@ -68,6 +87,79 @@ public class MainActivity extends AppCompatActivity implements OnProgressBarList
     private final Messenger mMessenger = new Messenger(new IncomingHandler());
     NotificationManager notificationManager;
     private static final int NOTIFY_ME_ID = 1336;
+    private boolean exit = false;
+
+    @Override
+    public void onDeviceConnecting(BluetoothDevice bluetoothDevice) {
+
+    }
+
+    @Override
+    public void onDeviceConnected(BluetoothDevice bluetoothDevice) {
+
+    }
+
+    @Override
+    public void onDeviceDisconnecting(BluetoothDevice bluetoothDevice) {
+
+    }
+
+    @Override
+    public void onDeviceDisconnected(BluetoothDevice bluetoothDevice) {
+
+    }
+
+    @Override
+    public void onServicesDiscovered(BluetoothDevice bluetoothDevice) {
+
+    }
+
+    @Override
+    public void onDeviceReady(BluetoothDevice bluetoothDevice) {
+
+    }
+
+    @Override
+    public void onError(BluetoothDevice bluetoothDevice) {
+
+    }
+
+    @Override
+    public void onBonding(BluetoothDevice bluetoothDevice) {
+
+    }
+
+    @Override
+    public void onBonded(BluetoothDevice bluetoothDevice) {
+
+    }
+
+    @Override
+    public void onDeviceNotSupported(BluetoothDevice bluetoothDevice) {
+
+    }
+
+    @Override
+    public void onStartedScanning() {
+    Toast.makeText(getApplicationContext(),"Started SCanning",Toast.LENGTH_LONG).show();
+    }
+
+    private enum Task {HOME_POS_CHECK_M2 ,HOME_POS_CHECK_M1,
+        HOME_POS_CHECK_M3,
+        INITIAL_LOADING,
+        MIXING_INITIATION,
+        TRAY_SHAKING,
+        PIPETTE_MIXING_INITIATION,
+        PIPETTE_MIXING,
+        REAGENT_DISPENSING,
+        TIP1_DISPOSAL_AND_TIP2_FIX,
+        BUFFER_DISPENSING,
+        TIP2_DISPOSAL,
+        FINAL_LOADING,
+        LAST_TASK
+    };
+    CountDownTimer yourCountDownTimer;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -75,20 +167,21 @@ public class MainActivity extends AppCompatActivity implements OnProgressBarList
         setContentView(R.layout.activity_main);
         StartTestButton = (Button) findViewById(R.id.StartTestButton);
         StartTestButton.setOnClickListener(this);
+        LoadingButton = (Button) findViewById(R.id.LoadingButton);
+        LoadingButton.setOnClickListener(this);
+        StartTestButton.setEnabled(false);
         CancelButton = (Button) findViewById(R.id.cancelTestButton);
         CancelButton.setOnClickListener(this);
-        RestartButton = (Button) findViewById(R.id.RestartTestButton);
-        RestartButton.setOnClickListener(this);
-        EndTestButton = (Button) findViewById(R.id.EndTestButton);
-        EndTestButton.setOnClickListener(this);
+        CancelButton.setEnabled(false);
+        batteryTextView = (TextView) findViewById(R.id.BatteryTextView);
         BLEConnectButton = (Button) findViewById(R.id.ConnectButton);
         BLEConnectButton.setOnClickListener(this);
         textView = (TextView) findViewById(R.id.Progressbartxt);
         bnp = (NumberProgressBar) findViewById(R.id.numberbar1);
         bnp.setOnProgressBarListener(this);
-        bnp.incrementProgressBy(1);
-        if (savedInstanceState != null)
-        {
+
+
+        if (savedInstanceState != null) {
             mPermissionGranted = savedInstanceState.getBoolean("Permission");
             mServiceBounded = savedInstanceState.getBoolean("Service Bounded");
         }
@@ -98,14 +191,14 @@ public class MainActivity extends AppCompatActivity implements OnProgressBarList
         mPowerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
 
         if (mBluetoothAdapter == null) {
-            Toast.makeText(this,"Bluetooth is not available", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Bluetooth is not available", Toast.LENGTH_LONG).show();
         }
-        tts =new TextToSpeech(getApplicationContext(), new TextToSpeech.OnInitListener() {
+        tts = new TextToSpeech(getApplicationContext(), new TextToSpeech.OnInitListener() {
             @Override
             public void onInit(int status) {
-                if(status != TextToSpeech.ERROR) {
+                if (status != TextToSpeech.ERROR) {
                     tts.setLanguage(Locale.US);
-                    Log.d(TAG,"Language is set");
+                    Log.d(TAG, "Language is set");
                 }
             }
         });
@@ -168,7 +261,8 @@ public class MainActivity extends AppCompatActivity implements OnProgressBarList
         mBuilder.setContentIntent(pendingIntent);
         mBuilder.setDefaults(Notification.DEFAULT_SOUND | Notification.DEFAULT_VIBRATE);
         mBuilder.setNumber(7);
-        mBuilder.setChannelId(CHANNEL_ID);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+            mBuilder.setChannelId(CHANNEL_ID);
         mBuilder.setSmallIcon(R.drawable.example_picture);
         Notification notification = mBuilder.build();
         notificationManager.notify(NOTIFY_ME_ID, notification);
@@ -198,7 +292,8 @@ public class MainActivity extends AppCompatActivity implements OnProgressBarList
         }
         else
         {
-            display_notification("GPS is disabled",1);
+            if((Build.VERSION.SDK_INT >= Build.VERSION_CODES.M))
+                display_notification("GPS is disabled",1);
             Log.d(TAG,"GPS is disabled");
         }
 
@@ -216,6 +311,7 @@ public class MainActivity extends AppCompatActivity implements OnProgressBarList
         }
 
     }
+
     private void speakOut(String data) {
 
         String text = data;
@@ -237,9 +333,8 @@ public class MainActivity extends AppCompatActivity implements OnProgressBarList
         }catch (IllegalFormatException e)
         {
         }
-
-
     }
+
 
     private ServiceConnection mServiceConnection = new ServiceConnection() {
         @Override
@@ -247,7 +342,9 @@ public class MainActivity extends AppCompatActivity implements OnProgressBarList
             mServiceBinder = (BLEService.BLEServiceBinder) iBinder;
             mServiceBinder.registerActivityMessenger(mMessenger);
             mServiceBounded = true;
-            speakOut("Started Scanning");
+            //mServiceBinder.setGattCallbacks(callbacks);
+
+           // speakOut("Started Scanning");
         }
 
         @Override
@@ -313,8 +410,15 @@ public class MainActivity extends AppCompatActivity implements OnProgressBarList
     public void onProgressChange(int current, int max) {
         if(current == max) {
             Toast.makeText(getApplicationContext(), "finish", Toast.LENGTH_SHORT).show();
-            bnp.setProgress(0);
+           // bnp.setProgress(0);
         }
+    }
+
+    @Override
+        public void onBackPressed() {
+        super.onBackPressed();  // optional depending on your needs
+        mServiceBinder.endTest();
+
     }
 
     @Override
@@ -322,17 +426,80 @@ public class MainActivity extends AppCompatActivity implements OnProgressBarList
         switch(view.getId())
         {
             case R.id.cancelTestButton:
+                mServiceBinder.cancelTest();
+                bnp.setProgress(0);
                 break;
             case R.id.ConnectButton:
-                break;
-            case R.id.EndTestButton:
+                mServiceBinder.connect();
                 break;
             case R.id.StartTestButton:
+                mServiceBinder.startTest();
+                LoadingButton.setEnabled(false);
+                CancelButton.setEnabled(true);
+                bnp.setProgress(0);
                 break;
-            case R.id.RestartTestButton:
+            case R.id.LoadingButton:
+                mServiceBinder.goToLoadingPosition();
+                LoadingButton.setEnabled(false);
+                StartTestButton.setEnabled(true);
+                CancelButton.setEnabled(true);
                 break;
+
         }
     }
+
+    public void setTextInTextView(String result)
+    {
+        int data = Integer.parseInt(result);
+        switch(data){
+            case 0:
+               textView.setText("M2 Home Position Check");
+                break;
+            case 1:
+                textView.setText("M1 Home Position Check");
+                break;
+            case 2:
+                textView.setText("M3 Home Position Check");
+                break;
+            case 3:
+                textView.setText("Initial Loading");
+                break;
+            case 4:
+                textView.setText("Mixing Initiation");
+                StartTestButton.setEnabled(true);
+                break;
+            case 5:
+                textView.setText("Tray Shaking");
+                break;
+            case 6:
+                textView.setText("Pipette mixing initiation");
+                break;
+            case 7:
+                textView.setText("pipette mixing");
+                break;
+            case 8:
+                textView.setText("reagent dispensing");
+                break;
+            case 9:
+                textView.setText("Tip1 Disposal and Tip2 Fix");
+                break;
+            case 10:
+                textView.setText("Buffer Dispensing");
+                break;
+            case 11:
+                textView.setText("Tip2 disposal");
+                break;
+            case 12:
+                textView.setText("Going back to Loading Position");
+                break;
+            case 13:
+                textView.setText("Test is completed");
+                break;
+        }
+
+    }
+
+
 
     public class IncomingHandler extends Handler
     {
@@ -342,8 +509,56 @@ public class MainActivity extends AppCompatActivity implements OnProgressBarList
             int responsecode = message.what;
             switch(responsecode)
             {
+                case NOTIFY_CONNECTION:
+                    speakOut("Connected with Automation System");
+                    textView.setText("Connected with Automation System");
+                    BLEConnectButton.setEnabled(false);
+                    break;
+                case NOTIFY_DISCONNECTION:
+                    speakOut("Disconnected");
+                    textView.setText("Disconnected");
+                    LoadingButton.setEnabled(true);
+                    StartTestButton.setEnabled(false);
+                    BLEConnectButton.setEnabled(true);
+                    CancelButton.setEnabled(false);
+                    break;
+                case NOTIFY_DATA_CHANGE:
+                    bnp.incrementProgressBy(10);
+
+                    break;
+                case NOTIFY_TASK_COMPETED:
+                    bnp.incrementProgressBy(10);
+                    speakOut("Test is completed");
+                    speakOut("You have 20 seconds to take out the strip from the Automation System");
+                    CancelButton.setEnabled(false);
+                    AlertFragment alertDialogFragment = new AlertFragment();
+                    FragmentManager fm = getFragmentManager();
+                    alertDialogFragment.show(fm,"Alert");
+                    break;
+                case NOTIFY_ERROR:
+                    textView.setText("Going to Standby State");
+                    break;
+                case NOTIFY_CURRENT_TASK_RUNNING:
+                    Object data = message.obj;
+                    String result = String.valueOf(data);
+                    setTextInTextView(result);
+                    break;
+                case FOUND_DEVICE:
+                    textView.setText("Found Device");
+                    break;
+                case BATTERY_STATE:
+                    Object battery = message.obj;
+                    String batteryString = String.valueOf(battery);
+
+                    if (batteryString.length() !=0) {
+                        int battery_state = Integer.parseInt(batteryString);
+                        batteryTextView.setText("Battery Voltage is " + batteryString);
+
+                    }
+                    break;
                 default:
                     super.handleMessage(message);
+                    break;
             }
         }
 

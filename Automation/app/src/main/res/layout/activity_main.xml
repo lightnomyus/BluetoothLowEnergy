@@ -21,10 +21,18 @@
     <Button
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:id="@+id/LoadingButton"
+        android:text="Go to Loading Position"
+        android:layout_margin="8dp"/>
+    <Button
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
         android:id="@+id/StartTestButton"
         android:layout_margin="8dp"
         android:text="Start Test"/>
-
+<RelativeLayout
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content">
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -32,15 +40,26 @@
         android:layout_margin="8dp"
         android:hint="Test status" />
 
+    <TextView
+        android:layout_width="wrap_content"
+        android:id="@+id/BatteryTextView"
+        android:layout_height="wrap_content"
+        android:layout_alignParentRight="true"
+        android:layout_margin="8dp"
+        android:hint="Battery Level"/>
+
     <com.daimajia.numberprogressbar.NumberProgressBar
         android:id="@+id/numberbar1"
         android:layout_width="wrap_content"
-        android:padding="30dp"
+        android:layout_below="@+id/BatteryTextView"
+        android:layout_margin="8dp"
         custom:progress_current="0"
-        custom:progress_text_size="10dp"
+        custom:progress_text_size="20dp"
         custom:progress_text_visibility="visible"
         style="@style/NumberProgressBar_Default"
         android:layout_height="wrap_content" />
+</RelativeLayout>
+
     <Button
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -48,21 +67,7 @@
         android:layout_margin="8dp"
         android:text="CANCEL TEST"/>
 
-    <Button
-        android:id="@+id/EndTestButton"
-        android:text="End test "
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:padding="8dp"
-        android:layout_margin="8dp"/>
 
-    <Button
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:padding="8dp"
-        android:id="@+id/RestartTestButton"
-        android:layout_margin="8dp"
-        android:text="RESTART TEST"/>
 
 
 </LinearLayout>
