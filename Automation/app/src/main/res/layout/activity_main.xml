@@ -67,6 +67,19 @@
         android:layout_margin="8dp"
         android:text="CANCEL TEST"/>
 
+    <Button
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:id="@+id/BondButton"
+        android:layout_margin="8dp"
+        android:text="Bond"/>
+
+    <Button
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:id="@+id/DeleteBondButton"
+        android:layout_margin="8dp"
+        android:text="Delete Bond"/>
 
 
 

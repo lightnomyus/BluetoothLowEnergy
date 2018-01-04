@@ -9,6 +9,7 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothGatt;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
@@ -49,7 +50,9 @@ import java.util.Locale;
 import java.util.Timer;
 import java.util.TimerTask;
 
-public class MainActivity extends AppCompatActivity implements OnProgressBarListener,View.OnClickListener,BleCallbacks {
+import static java.lang.Thread.sleep;
+
+public class MainActivity extends AppCompatActivity implements OnProgressBarListener,View.OnClickListener {
     private Timer timer;
 
     public NumberProgressBar bnp;
@@ -57,13 +60,14 @@ public class MainActivity extends AppCompatActivity implements OnProgressBarList
     private Button CancelButton;
     private Button LoadingButton;
     private Button BLEConnectButton;
+    private Button DeleteBondButton;
     private TextView textView;
     private TextView batteryTextView;
     private ServiceStateReceiver mServiceReceiver;
     public TextToSpeech tts;
     public static final int NOTIFY_CONNECTION = 1;
-    public static final int NOTIFY_CONNECTING = 2;
-    public static final int NOTIFY_DISCONNECTING = 3;
+    public static final int NOTIFY_DISCOVER_SERVICES = 2;
+    public static final int NOTIFY_READ_SUPPORTED_SERVICES = 3;
     public static final int NOTIFY_DISCONNECTION = 4;
     public static final int NOTIFY_BONDING = 5;
     public static final int NOTIFY_BONDED = 6;
@@ -74,8 +78,9 @@ public class MainActivity extends AppCompatActivity implements OnProgressBarList
     public static final int NOTIFY_TASK_COMPETED =11;
     public static final int NOTIFY_CURRENT_TASK_RUNNING = 12;
     public static final int NOTIFY_ERROR = 13;
-    public static final int FOUND_DEVICE = 14;
-    public static final int BATTERY_STATE = 15;
+    public static final int NOTIFY_FOUND_DEVICE = 14;
+    public static final int NOTIFY_BATTERY_STATE = 15;
+    public static final int NOTIFY_SCANNING = 16;
     private static boolean mServiceBounded;
     private static boolean mServiceRunning;
     public static boolean mPermissionGranted;
@@ -88,62 +93,7 @@ public class MainActivity extends AppCompatActivity implements OnProgressBarList
     NotificationManager notificationManager;
     private static final int NOTIFY_ME_ID = 1336;
     private boolean exit = false;
-
-    @Override
-    public void onDeviceConnecting(BluetoothDevice bluetoothDevice) {
-
-    }
-
-    @Override
-    public void onDeviceConnected(BluetoothDevice bluetoothDevice) {
-
-    }
-
-    @Override
-    public void onDeviceDisconnecting(BluetoothDevice bluetoothDevice) {
-
-    }
-
-    @Override
-    public void onDeviceDisconnected(BluetoothDevice bluetoothDevice) {
-
-    }
-
-    @Override
-    public void onServicesDiscovered(BluetoothDevice bluetoothDevice) {
-
-    }
-
-    @Override
-    public void onDeviceReady(BluetoothDevice bluetoothDevice) {
-
-    }
-
-    @Override
-    public void onError(BluetoothDevice bluetoothDevice) {
-
-    }
-
-    @Override
-    public void onBonding(BluetoothDevice bluetoothDevice) {
-
-    }
-
-    @Override
-    public void onBonded(BluetoothDevice bluetoothDevice) {
-
-    }
-
-    @Override
-    public void onDeviceNotSupported(BluetoothDevice bluetoothDevice) {
-
-    }
-
-    @Override
-    public void onStartedScanning() {
-    Toast.makeText(getApplicationContext(),"Started SCanning",Toast.LENGTH_LONG).show();
-    }
-
+    private BluetoothGatt bluetoothGatt;
     private enum Task {HOME_POS_CHECK_M2 ,HOME_POS_CHECK_M1,
         HOME_POS_CHECK_M3,
         INITIAL_LOADING,
@@ -179,6 +129,8 @@ public class MainActivity extends AppCompatActivity implements OnProgressBarList
         textView = (TextView) findViewById(R.id.Progressbartxt);
         bnp = (NumberProgressBar) findViewById(R.id.numberbar1);
         bnp.setOnProgressBarListener(this);
+        DeleteBondButton = (Button) findViewById(R.id.DeleteBondButton);
+        DeleteBondButton.setOnClickListener(this);
 
 
         if (savedInstanceState != null) {
@@ -267,7 +219,6 @@ public class MainActivity extends AppCompatActivity implements OnProgressBarList
         Notification notification = mBuilder.build();
         notificationManager.notify(NOTIFY_ME_ID, notification);
     }
-
 
     @Override
     public void onResume()
@@ -444,6 +395,9 @@ public class MainActivity extends AppCompatActivity implements OnProgressBarList
                 StartTestButton.setEnabled(true);
                 CancelButton.setEnabled(true);
                 break;
+            case R.id.DeleteBondButton:
+                mServiceBinder.removeBond();
+                break;
 
         }
     }
@@ -499,8 +453,6 @@ public class MainActivity extends AppCompatActivity implements OnProgressBarList
 
     }
 
-
-
     public class IncomingHandler extends Handler
     {
         @Override
@@ -510,17 +462,42 @@ public class MainActivity extends AppCompatActivity implements OnProgressBarList
             switch(responsecode)
             {
                 case NOTIFY_CONNECTION:
-                    speakOut("Connected with Automation System");
+                    bluetoothGatt = (BluetoothGatt) message.obj;
+                    //speakOut("Connected with Automation System");
                     textView.setText("Connected with Automation System");
                     BLEConnectButton.setEnabled(false);
+                    final boolean bonded = bluetoothGatt.getDevice().getBondState() == BluetoothDevice.BOND_BONDED;
+                    final int delay = bonded ? 1600 : 0; // around 1600 ms is required when connection interval is ~45ms.
+                    try {
+                        sleep(delay);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                    if (bluetoothGatt.getDevice().getBondState() != BluetoothDevice.BOND_BONDING) {
+                        mServiceBinder.internaldiscoverServices();
+                    }
+                    break;
+                case NOTIFY_DISCOVER_SERVICES:
+                    mServiceBinder.readServices();
+                    break;
+                case NOTIFY_READ_SUPPORTED_SERVICES:
+                    mServiceBinder.internalBond();
+                    break;
+                case NOTIFY_BONDING:
+                    textView.setText("Bonding");
+                    break;
+                case NOTIFY_BONDED:
+                    textView.setText("Bonded");
+                    mServiceBinder.internalEnableNotifications();
                     break;
                 case NOTIFY_DISCONNECTION:
-                    speakOut("Disconnected");
+                   // speakOut("Disconnected");
                     textView.setText("Disconnected");
                     LoadingButton.setEnabled(true);
                     StartTestButton.setEnabled(false);
                     BLEConnectButton.setEnabled(true);
                     CancelButton.setEnabled(false);
+                    mServiceBinder.internalDisconnection();
                     break;
                 case NOTIFY_DATA_CHANGE:
                     bnp.incrementProgressBy(10);
@@ -528,8 +505,8 @@ public class MainActivity extends AppCompatActivity implements OnProgressBarList
                     break;
                 case NOTIFY_TASK_COMPETED:
                     bnp.incrementProgressBy(10);
-                    speakOut("Test is completed");
-                    speakOut("You have 20 seconds to take out the strip from the Automation System");
+                   // speakOut("Test is completed");
+                   // speakOut("You have 20 seconds to take out the strip from the Automation System");
                     CancelButton.setEnabled(false);
                     AlertFragment alertDialogFragment = new AlertFragment();
                     FragmentManager fm = getFragmentManager();
@@ -543,13 +520,13 @@ public class MainActivity extends AppCompatActivity implements OnProgressBarList
                     String result = String.valueOf(data);
                     setTextInTextView(result);
                     break;
-                case FOUND_DEVICE:
+
+                case NOTIFY_FOUND_DEVICE:
                     textView.setText("Found Device");
                     break;
-                case BATTERY_STATE:
+                case NOTIFY_BATTERY_STATE:
                     Object battery = message.obj;
                     String batteryString = String.valueOf(battery);
-
                     if (batteryString.length() !=0) {
                         int battery_state = Integer.parseInt(batteryString);
                         batteryTextView.setText("Battery Voltage is " + batteryString);

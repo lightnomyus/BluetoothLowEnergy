@@ -93,7 +93,6 @@ public final class AdvertisingDataParser {
         int currentPos = 0;
         int advertisingFlags = -1;
         String deviceName = null;
-        String macAddress;
         int manufacturerId = -1;
         byte[] manufacturerSpecificData;
         int deviceStatus = 0;
@@ -143,7 +142,6 @@ public final class AdvertisingDataParser {
         }
 
         ParsingComplete = true;
-        macAddress = deviceAddress;
 
         return new AdvertisingDataParser(advertisingFlags,manufacturerId, deviceStatus, batteryState, deviceName, ParsingComplete, deviceAddress, bondStatus,standbyStatus);
     }

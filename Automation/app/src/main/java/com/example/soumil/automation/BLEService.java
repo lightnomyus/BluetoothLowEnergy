@@ -21,6 +21,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Binder;
+import android.os.Build;
 import android.os.IBinder;
 import android.os.Message;
 import android.os.Messenger;
@@ -31,6 +32,7 @@ import android.util.Pair;
 import android.widget.Toast;
 
 import java.io.UnsupportedEncodingException;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Currency;
 import java.util.List;
@@ -65,9 +67,16 @@ public class BLEService<E extends BleCallbacks> extends Service  {
     private static UUID WRITE = UUID.fromString(WRITE_CHARACTERISTIC);
     private static UUID SERVICE = UUID.fromString(JANACARE_DATA_SERVICE);
     private static UUID CCCD = UUID.fromString(CLIENT_CHARACTERISTIC_CONFIGUARION_DESCRIPTOR);
-    private BluetoothStateReceiver mBluetoothStateReceiver;
+    private final static String ERROR_CONNECTION_STATE_CHANGE = "Error on connection state change";
+    private final static String ERROR_DISCOVERY_SERVICE = "Error on discovering services";
+    private final static String ERROR_AUTH_ERROR_WHILE_BONDED = "Phone has lost bonding information";
+    private final static String ERROR_READ_CHARACTERISTIC = "Error on reading characteristic";
+    private final static String ERROR_WRITE_CHARACTERISTIC = "Error on writing characteristic";
+    private final static String ERROR_READ_DESCRIPTOR = "Error on reading descriptor";
+    private final static String ERROR_WRITE_DESCRIPTOR = "Error on writing descriptor";
+    private final static String ERROR_MTU_REQUEST = "Error on mtu request";
+    private final static String ERROR_CONNECTION_PRIORITY_REQUEST = "Error on connection priority request";
     private int mManufacturerID = 0;
-    BluetoothGattService mService;
     int messageType;
     int currentTask;
     int taskStatus;
@@ -75,26 +84,19 @@ public class BLEService<E extends BleCallbacks> extends Service  {
     int standbymode;
     int mPreviousTask;
     int batteryLevels;
-    private int mStandbyStatus = 0;
-    protected E mCallbacks;
+    BluetoothDevice mdevice;
     public BLEService() {
 
     }
 
     @Override
     public IBinder onBind(Intent intent) {
+
         isServiceBinded = true;
         mBluetoothManager = (BluetoothManager) getApplicationContext().getSystemService(Context.BLUETOOTH_SERVICE);
         Toast.makeText(getApplicationContext(),"Service is binded",Toast.LENGTH_SHORT).show();
-        IntentFilter filter = new IntentFilter();
-        Log.d(TAG,"Service Started");
-        filter.addAction(mBluetoothAdapter.ACTION_STATE_CHANGED);
-        filter.addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED);
-        filter.addAction("android.action.scan");
-        filter.setPriority(IntentFilter.SYSTEM_HIGH_PRIORITY);
-        mBluetoothStateReceiver = new BluetoothStateReceiver();
-        registerReceiver(mBluetoothStateReceiver,filter);
-        mBLEState = BLEState.SCANNING;
+        registerReceiver(mBluetoothStateReceiver,new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED));
+        registerReceiver(mBondingBroadcastReceiver, new IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED));
         startScan();
 
         return mBinder;
@@ -106,6 +108,7 @@ public class BLEService<E extends BleCallbacks> extends Service  {
         isServiceBinded = false;
         Toast.makeText(getApplicationContext(),"Service is Unbinded",Toast.LENGTH_SHORT).show();
         unregisterReceiver(mBluetoothStateReceiver);
+        unregisterReceiver(mBondingBroadcastReceiver);
         Intent intent1 = new Intent("android.action.service").putExtra("unBind","Service Unbinded");
         sendBroadcast(intent1);
         stopScan();
@@ -120,10 +123,7 @@ public class BLEService<E extends BleCallbacks> extends Service  {
         mBLEState = BLEState.SCANNING;
         mBluetoothManager = (BluetoothManager)  getSystemService(BLUETOOTH_SERVICE);
         mBluetoothAdapter = mBluetoothManager.getAdapter();
-
-
     }
-
 
     @Override
     public int onStartCommand(final Intent intent, int id, int flags) {
@@ -141,14 +141,14 @@ public class BLEService<E extends BleCallbacks> extends Service  {
         mScanSettings = new ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build();
         mScanListFiler = new ArrayList<>();
         mBluetoothLeScanner.startScan(mScanListFiler,mScanSettings,mScanCallback);
+        mBLEState = BLEState.SCANNING;
         Log.d(TAG,"Started Scanning");
-
-
     }
 
     public void stopScan() {
         if (mBluetoothLeScanner != null)
             mBluetoothLeScanner.stopScan(mScanCallback);
+        mBLEState = BLEState.IDLE;
         Log.d(TAG,"Stopped Scanning");
 
     }
@@ -161,7 +161,7 @@ public class BLEService<E extends BleCallbacks> extends Service  {
             if (mManufacturerID == 1036) {
                 if (mMessenger != null) {
                         try {
-                            mMessenger.send(Message.obtain(null, MainActivity.FOUND_DEVICE, null));
+                            mMessenger.send(Message.obtain(null, MainActivity.NOTIFY_FOUND_DEVICE, null));
                         } catch (RemoteException e) {
                             e.printStackTrace();
                         }
@@ -182,7 +182,6 @@ public class BLEService<E extends BleCallbacks> extends Service  {
             parseAdvertisingData(mScanRecord.getBytes());
 //            mCallbacks.onStartedScanning();
             if(mManufacturerID == 1036 && mBLEState == BLEState.CONNECTED){
-                Log.d(TAG,"Device found");
                 connectDevice(deviceAddress);
 
             }
@@ -202,6 +201,7 @@ public class BLEService<E extends BleCallbacks> extends Service  {
             return false;
         }
         final BluetoothDevice device = mBluetoothAdapter.getRemoteDevice(deviceAddress);
+        mdevice = device;
         if (device == null) {
             Log.w(TAG, "Device not found.  Unable to connect.");
             return false;
@@ -213,9 +213,15 @@ public class BLEService<E extends BleCallbacks> extends Service  {
     }
 
     public void enablenotifications() {
-
+        final BluetoothGatt gatt = mBluetoothGatt;
+        if (gatt == null)
+            return;
+        final int properties = mBluetoothGattReadCharacteristic.getProperties();
+        if ((properties & BluetoothGattCharacteristic.PROPERTY_NOTIFY) == 0)
+            return;
         mBluetoothGatt.setCharacteristicNotification(mBluetoothGattReadCharacteristic,true);
-        BluetoothGattDescriptor descriptor = mBluetoothGattReadCharacteristic.getDescriptor(CCCD);
+        final BluetoothGattDescriptor descriptor = mBluetoothGattReadCharacteristic.getDescriptor(CCCD);
+        if (descriptor != null)
         descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
         mBluetoothGatt.writeDescriptor(descriptor);
     }
@@ -224,7 +230,9 @@ public class BLEService<E extends BleCallbacks> extends Service  {
         BluetoothGattService mService = mBluetoothGatt.getService(SERVICE);
         mBluetoothGattReadCharacteristic = mService.getCharacteristic(READ);
         mBluetoothGattWriteCharacteristic = mService.getCharacteristic(WRITE);
-        enablenotifications();
+        sendData(MainActivity.NOTIFY_DEVICE_READY,null);
+      //  performBonding();
+      //  enablenotifications();
     }
 
     public void sendData(int type, Object data) {
@@ -256,7 +264,7 @@ public class BLEService<E extends BleCallbacks> extends Service  {
         }
         if (standbymode == 0) {
             sendData(MainActivity.NOTIFY_CURRENT_TASK_RUNNING,currentTask);
-            sendData(MainActivity.BATTERY_STATE,batteryLevels);
+            sendData(MainActivity.NOTIFY_BATTERY_STATE,batteryLevels);
         }
 
         if (currentTask > 3 & taskStatus == 1)
@@ -274,37 +282,100 @@ public class BLEService<E extends BleCallbacks> extends Service  {
     }
     public void writeCharacteristic(byte[] data)
     {
+        final BluetoothGatt gatt = mBluetoothGatt;
+        if (gatt == null || mBluetoothGattWriteCharacteristic == null)
+            return;
+        final int properties = mBluetoothGattWriteCharacteristic.getProperties();
+        if ((properties & (BluetoothGattCharacteristic.PROPERTY_WRITE | BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE)) == 0)
+            return;
+
         mBluetoothGattWriteCharacteristic.setValue(data);
         boolean status = mBluetoothGatt.writeCharacteristic(mBluetoothGattWriteCharacteristic);
         Log.d(TAG," "+status);
     }
 
+    public void deleteBond(){
 
-    private BluetoothGattCallback mBluetoothGattCallback = new BluetoothGattCallback() {
+        try {
+            Method removeBond = BluetoothDevice.class.getMethod("removeBond");
+            removeBond.invoke(mdevice);
+
+        }catch (Exception e) {
+            e.printStackTrace();
+            return;
+        }
+
+    }
+
+    public void performBonding() {
+        boolean result = false;
+        final BluetoothDevice bluetoothDevice = mdevice;
+        if (bluetoothDevice == null)
+            return;
+        if (bluetoothDevice.getBondState() == BluetoothDevice.BOND_BONDED) {
+            return;
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+            result = bluetoothDevice.createBond();
+        } else {
+            try {
+                final Method createBond = bluetoothDevice.getClass().getMethod("createBond");
+                if (createBond != null) {
+                    createBond.invoke(bluetoothDevice);
+                }
+
+            } catch (final Exception e) {
+
+            }
+        }
+        if (!result)
+            Log.d(TAG,"Bonding Failed");
+
+    }
+
+
+    public void requestConnectionPriority() {
+        final BluetoothGatt gatt = mBluetoothGatt;
+        if (gatt == null)
+            return;
+        gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH);
+
+    }
+
+        private BluetoothGattCallback mBluetoothGattCallback = new BluetoothGattCallback() {
         @Override
         public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
             super.onConnectionStateChange(gatt, status, newState);
+
+            if (status == BluetoothGatt.GATT_SUCCESS && newState == BluetoothProfile.STATE_CONNECTED) {
+                mBLEState = BLEState.CONNECTED;
+                sendData(MainActivity.NOTIFY_CONNECTION,null);
+
+            } else {
+                if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                    if (status != BluetoothGatt.GATT_SUCCESS) {
+                        Log.d(TAG,"Error:"+ Integer.toHexString(status));
+                    }
+                    sendData(MainActivity.NOTIFY_DISCONNECTION,null);
+                    Log.d(TAG, "Disconnected from GATT server.");
+
+                    startScan();
+                } else {
+                    if (status != BluetoothGatt.GATT_SUCCESS)
+                        Log.d(TAG,"Error:"+ Integer.toHexString(status));
+                }
+            }
             switch (newState)
             {
                 case BluetoothProfile.STATE_CONNECTED:
-                    sendData(MainActivity.NOTIFY_CONNECTION,null);
-                    mBluetoothGatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH);
-                    try {
-                        sleep(600);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
-                    mBluetoothGatt.discoverServices();
+                    sendData(MainActivity.NOTIFY_CONNECTION,gatt);
+                    requestConnectionPriority();
+
                     break;
                 case BluetoothProfile.STATE_DISCONNECTED:
                     sendData(MainActivity.NOTIFY_DISCONNECTION,null);
                     Log.d(TAG, "Disconnected from GATT server.");
-                    try {
-                        sleep(1000);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
-                    mBluetoothGatt.close();
+
                     startScan();
                     break;
 
@@ -314,7 +385,9 @@ public class BLEService<E extends BleCallbacks> extends Service  {
         @Override
         public void onServicesDiscovered(BluetoothGatt gatt, int status)
         {
-            getSupportedServices();
+            Log.d(TAG,"Services are discovered");
+            //performBonding();
+            //getSupportedServices();
         }
         @Override
         public void onCharacteristicRead(BluetoothGatt gatt, BluetoothGattCharacteristic gattCharacteristic, int status) {
@@ -342,30 +415,53 @@ public class BLEService<E extends BleCallbacks> extends Service  {
 
     };
 
+    public BroadcastReceiver mBondingBroadcastReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            final BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+            final int bondState = intent.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE,-1);
+            final int previousBondState = intent.getIntExtra(BluetoothDevice.EXTRA_PREVIOUS_BOND_STATE,-1);
 
-    public class BluetoothStateReceiver extends BroadcastReceiver
-    {
+            if (mBluetoothGatt == null || !device.getAddress().equals(mBluetoothGatt.getDevice().getAddress()))
+                return;
+            switch (bondState) {
+                case BluetoothDevice.BOND_BONDING:
+                    Log.d(TAG,"Bonding");
+                    sendData(MainActivity.NOTIFY_BONDING,null);
+                    break;
+                case BluetoothDevice.BOND_BONDED:
+                    Log.d(TAG,"Bonded");
+                    sendData(MainActivity.NOTIFY_BONDED,null);
+                    break;
+
+            }
+        }
+    };
+
+    public BroadcastReceiver mBluetoothStateReceiver = new BroadcastReceiver(){
+
         @Override
         public void onReceive(Context context, Intent intent) {
 
             final String action = intent.getAction();
             if (action.equals(BluetoothAdapter.ACTION_STATE_CHANGED)) {
-                final int state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR);
+                final int state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.STATE_OFF);
+                final int previousState = intent.getIntExtra(BluetoothAdapter.EXTRA_PREVIOUS_STATE,BluetoothAdapter.STATE_OFF);
 
                 switch(state) {
+                    case BluetoothAdapter.STATE_TURNING_OFF:
                     case BluetoothAdapter.STATE_OFF:
-                        Log.d(TAG,"Turned off");
-                        Toast.makeText(getApplicationContext(),"Bluetooth Turned OFF",Toast.LENGTH_LONG).show();
-                        break;
-                    case BluetoothAdapter.STATE_ON:
-                        Log.d(TAG,"Turned ON");
-                        Toast.makeText(getApplicationContext(),"Bluetooth Turned ON",Toast.LENGTH_LONG).show();
+                        final String stateString = "Broadcast Action Received:" + BluetoothAdapter.ACTION_STATE_CHANGED + "state changed";
+                        Log.d(TAG,stateString);
+                        if (mBLEState == BLEState.CONNECTED && previousState != BluetoothAdapter.STATE_TURNING_OFF && previousState != BluetoothAdapter.STATE_OFF) {
+                            sendData(MainActivity.NOTIFY_DISCONNECTION,null);
+                        }
                         break;
                 }
 
             }
         }
-    }
+    };
 
     public class BLEServiceBinder extends Binder {
         public void registerActivityMessenger(Messenger messenger){
@@ -373,10 +469,30 @@ public class BLEService<E extends BleCallbacks> extends Service  {
             mMessenger = messenger;
         }
 
+        public void internaldiscoverServices() {
+            mBluetoothGatt.discoverServices();
+        }
 
-        public BLEState getBLEState() {
+        public void readServices() {
+            getSupportedServices();
+        }
 
-            return mBLEState;
+        public void internalBond() {
+            performBonding();
+        }
+
+        public void internalEnableNotifications() {
+            enablenotifications();
+        }
+
+        public void internalDisconnection() {
+            try {
+                sleep(1000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            mBluetoothGatt.close();
+            mBluetoothGatt = null;
         }
 
         public void goToLoadingPosition()
@@ -415,6 +531,10 @@ public class BLEService<E extends BleCallbacks> extends Service  {
         public void connect() {
             mBLEState = BLEState.CONNECTED;
 
+        }
+
+        public void removeBond() {
+            deleteBond();
         }
 
     }
