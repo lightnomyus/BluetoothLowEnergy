@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context="com.example.soumilchugh.calibrationapp.MainActivity">
+
+    <Button
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:id="@+id/ConnectwithSystem"
+        android:layout_margin="8dp"
+        android:text="Connect with Automated System"
+        />
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginLeft="80dp"
+        android:id="@+id/linear1"
+        android:layout_below="@+id/ConnectwithSystem">
+        <Spinner
+            android:id="@+id/spMotor"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:dropDownWidth="wrap_content"
+            android:layout_margin="8dp"
+            android:spinnerMode="dropdown" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@+id/ConnectwithSystem"
+            android:layout_marginLeft="19dp"
+            android:textColor="@color/colorPrimary"
+            android:layout_marginStart="19dp"
+            android:layout_toEndOf="@+id/spMotor"
+            android:layout_margin="8dp"
+            android:layout_toRightOf="@+id/spMotor"
+            android:text="Motor Type" />
+    </LinearLayout>
+
+
+    <Button
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:id="@+id/EnterCalibration"
+        android:layout_below="@id/linear1"
+        android:layout_margin="8dp"
+        android:text="Calibration Mode"/>
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginLeft="40dp"
+        android:layout_below="@+id/EnterCalibration"
+        android:id="@+id/linearLayout2">
+        <Button
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:id="@+id/Increment"
+            android:layout_margin="8dp"
+            android:text = "+"/>
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_margin="8dp"
+            android:hint="Step value"/>
+        <Button
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_margin="8dp"
+            android:id="@+id/Decrement"
+            android:text="-"/>
+    </LinearLayout>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignLeft="@+id/EnterCalibration"
+        android:layout_alignParentBottom="true"
+        android:layout_alignStart="@+id/EnterCalibration"
+        android:layout_marginLeft="12dp"
+        android:layout_marginStart="12dp"
+        android:id="@+id/TaskStatus"
+        android:text="Task Status" />
+
+    <Button
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@+id/linearLayout2"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="23dp"
+        android:id="@+id/SaveCalibration"
+        android:text="Save Calibration" />
+
+
+
+</RelativeLayout>
